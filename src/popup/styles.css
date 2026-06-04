@@ -115,6 +115,13 @@ button:disabled {
   background: #146c94;
 }
 
+.dangerButton {
+  width: 100%;
+  border-color: #d92d20;
+  color: #b42318;
+  background: #fff5f5;
+}
+
 .captureButton {
   width: 100%;
   min-height: 40px;

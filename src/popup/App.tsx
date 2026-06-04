@@ -1,4 +1,4 @@
-import { Download, Pause, Play, Square, ClipboardList, RefreshCw, MousePointerClick, GitBranch } from "lucide-react";
+import { Download, Pause, Play, Square, ClipboardList, RefreshCw, MousePointerClick, GitBranch, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../lib/db";
 import { buildTaskZip } from "../lib/exportZip";
@@ -164,6 +164,31 @@ export function App() {
     await refresh();
   }
 
+  async function deleteActiveTask() {
+    if (!activeTask) return;
+    const confirmed = window.confirm(`确认删除项目「${activeTask.taskName}」吗？该项目的页面、网络记录和点击路径都会被删除。`);
+    if (!confirmed) return;
+    await db.deleteTask(activeTask.id);
+    setActiveTaskId("");
+    activeTaskIdRef.current = "";
+    setPages([]);
+    setTransitions([]);
+    setSelectedPageId("");
+    await refresh();
+  }
+
+  async function clearAllTasks() {
+    const confirmed = window.confirm("确认清空全部已扫描项目吗？这会删除所有本地任务、页面证据、网络记录和点击路径。");
+    if (!confirmed) return;
+    await db.clearAll();
+    setTasks([]);
+    setActiveTaskId("");
+    activeTaskIdRef.current = "";
+    setPages([]);
+    setTransitions([]);
+    setSelectedPageId("");
+  }
+
   const completion = pages.length === 0 ? 0 : Math.round((pages.filter((page) => page.html && page.network && page.screenshotDataUrl).length / pages.length) * 100);
 
   return (
@@ -220,7 +245,15 @@ export function App() {
         <button onClick={() => void exportTask()} disabled={!activeTask || busy} title="导出 ZIP">
           <Download size={16} />
         </button>
+        <button onClick={() => void deleteActiveTask()} disabled={!activeTask} title="删除当前项目">
+          <Trash2 size={16} />
+        </button>
       </section>
+
+      <button className="dangerButton" onClick={() => void clearAllTasks()} disabled={tasks.length === 0}>
+        <Trash2 size={16} />
+        清空全部项目
+      </button>
 
       <button className="primary captureButton" onClick={() => void requestActivePageCapture().then(() => window.setTimeout(() => void refresh(), 1500))} disabled={!activeTask || activeTask.status !== "running"}>
         <MousePointerClick size={16} />

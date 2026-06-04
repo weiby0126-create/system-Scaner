@@ -66,6 +66,42 @@ export const db = {
   async putTask(task: ScanTask) {
     await tx("tasks", "readwrite", (store) => store.put(task));
   },
+  async deleteTask(taskId: string) {
+    const pages = await this.listPages(taskId);
+    const transitions = await this.listTransitions(taskId);
+    const networkEntries = (await Promise.all(pages.map((page) => this.listNetwork(page.pageId)))).flat();
+    const database = await openDb();
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(["tasks", "pages", "network", "transitions"], "readwrite");
+      const taskStore = transaction.objectStore("tasks");
+      const pageStore = transaction.objectStore("pages");
+      const networkStore = transaction.objectStore("network");
+      const transitionStore = transaction.objectStore("transitions");
+
+      taskStore.delete(taskId);
+      pages.forEach((page) => {
+        pageStore.delete(page.pageId);
+      });
+      networkEntries.forEach((entry) => networkStore.delete(entry.id));
+      transitions.forEach((transition) => transitionStore.delete(transition.id));
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  },
+  async clearAll() {
+    const database = await openDb();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(["tasks", "pages", "network", "transitions"], "readwrite");
+      transaction.objectStore("tasks").clear();
+      transaction.objectStore("pages").clear();
+      transaction.objectStore("network").clear();
+      transaction.objectStore("transitions").clear();
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  },
   async getTask(id: string) {
     return tx<ScanTask>("tasks", "readonly", (store) => store.get(id));
   },
