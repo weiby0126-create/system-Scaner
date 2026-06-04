@@ -58,7 +58,7 @@ function pageIndex(pages: PageRecord[]) {
 
 function navigationMap(pages: PageRecord[], transitions: PageTransition[]) {
   const nodes = new Map<string, { id: string; name: string; type: "system" | "menu" | "page"; parentId?: string; pageRef?: string }>();
-  const edges: Array<{ from: string; to: string; type: "contains" | "opens" | "clicked_to"; timestamp?: string }> = [];
+  const edges: Array<{ from: string; to: string; type: "contains" | "opens" | "clicked_to"; timestamp?: string; clickedElement?: PageTransition["clickedElement"] }> = [];
   const systemId = "system";
   nodes.set(systemId, { id: systemId, name: "系统", type: "system" });
 
@@ -89,7 +89,8 @@ function navigationMap(pages: PageRecord[], transitions: PageTransition[]) {
       from: `page:${transition.fromPageId}`,
       to: `page:${transition.toPageId}`,
       type: "clicked_to",
-      timestamp: transition.timestamp
+      timestamp: transition.timestamp,
+      clickedElement: transition.clickedElement
     });
   });
 

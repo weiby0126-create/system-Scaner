@@ -1,7 +1,7 @@
 import { db } from "./lib/db";
 import { createId } from "./lib/ids";
 import { sanitizeUrl } from "./lib/sanitize";
-import type { ExtensionMessage, NetworkEntry, PageDuplicateInfo, PageRecord, PageTransition } from "./types";
+import type { ClickEvidence, ExtensionMessage, NetworkEntry, PageDuplicateInfo, PageRecord, PageTransition } from "./types";
 
 const latestPageByTab = new Map<number, string>();
 
@@ -141,9 +141,15 @@ function pageName(page: PageRecord): string {
   return page.naming?.displayName || page.title || page.url;
 }
 
-async function recordTransition(taskId: string, tabId: number | undefined, toPage: PageRecord, exactDuplicateSkipped = false) {
+async function recordTransition(
+  taskId: string,
+  tabId: number | undefined,
+  toPage: PageRecord,
+  exactDuplicateSkipped = false,
+  clickedElement?: ClickEvidence
+) {
   const fromPageId = tabId ? latestPageByTab.get(tabId) : undefined;
-  if (fromPageId === toPage.pageId) return;
+  if (fromPageId === toPage.pageId && !clickedElement) return;
 
   const fromPage = fromPageId ? await db.getPage(fromPageId) : undefined;
   const transition: PageTransition = {
@@ -157,7 +163,8 @@ async function recordTransition(taskId: string, tabId: number | undefined, toPag
     toPageName: pageName(toPage),
     toUrl: toPage.url,
     timestamp: new Date().toISOString(),
-    trigger: "manual_capture",
+    trigger: clickedElement ? "page_click" : "manual_capture",
+    clickedElement,
     exactDuplicateSkipped
   };
   await db.putTransition(transition);
@@ -193,13 +200,13 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       const existingPages = await db.listPages(task.id);
       const dedupe = duplicateInfo(basePage, existingPages);
       if (dedupe.kind === "exact") {
-        await recordTransition(task.id, tabId, dedupe.page, true);
+        await recordTransition(task.id, tabId, dedupe.page, true, message.payload.click);
         return;
       }
 
       const page: PageRecord = { ...basePage, duplicateInfo: dedupe.info };
       await db.putPage(page);
-      await recordTransition(task.id, tabId, page);
+      await recordTransition(task.id, tabId, page, false, message.payload.click);
     })();
   }
 

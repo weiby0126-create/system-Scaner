@@ -55,6 +55,12 @@ type ClickPath = {
   fromPageName?: string;
   toPageName: string;
   timestamp: string;
+  trigger?: "manual_capture" | "page_click";
+  clickedElement?: {
+    text?: string;
+    tagName?: string;
+    selector?: string;
+  };
   exactDuplicateSkipped?: boolean;
 };
 
@@ -558,6 +564,9 @@ export function Analyzer() {
                 {model.clickPaths.slice(-20).map((path) => (
                   <div className="pageRow" key={path.id}>
                     <strong>{path.fromPageName || "起点"} → {path.toPageName}</strong>
+                    <span>
+                      {path.clickedElement?.text ? `点击：${path.clickedElement.text}` : path.trigger === "manual_capture" ? "手动补采" : "页面点击"}
+                    </span>
                     <span>{path.timestamp}</span>
                     {path.exactDuplicateSkipped ? <em>重复页面未新增证据</em> : null}
                   </div>

@@ -196,7 +196,7 @@ export function App() {
       <header>
         <div>
           <h1>系统能力发现助手</h1>
-          <p>先保存原始证据，再导出给外部 AI 分析。</p>
+          <p>点击业务页面后自动保存原始证据，再导出给外部 AI 分析。</p>
         </div>
         <button className="iconButton" onClick={() => void refresh()} title="刷新面板">
           <RefreshCw size={16} />
@@ -257,7 +257,7 @@ export function App() {
 
       <button className="primary captureButton" onClick={() => void requestActivePageCapture().then(() => window.setTimeout(() => void refresh(), 1500))} disabled={!activeTask || activeTask.status !== "running"}>
         <MousePointerClick size={16} />
-        采集当前页
+        手动补采当前页
       </button>
 
       <section className="stats">
@@ -305,7 +305,7 @@ export function App() {
 }
 
 function ScannedStructure({ pages, transitions }: { pages: PageRecord[]; transitions: PageTransition[] }) {
-  if (pages.length === 0) return <p className="empty">点击「采集当前页」后，这里会生成系统结构。</p>;
+  if (pages.length === 0) return <p className="empty">开始采集后，在业务页面点击菜单、按钮或链接，这里会生成系统结构。</p>;
 
   const pageById = new Map(pages.map((page) => [page.pageId, page]));
   const roots = new Map<string, { name: string; children: Map<string, PageRecord[]> }>();
@@ -349,6 +349,7 @@ function ScannedStructure({ pages, transitions }: { pages: PageRecord[]; transit
             return (
               <p key={transition.id}>
                 {fromPage ? pageDisplayName(fromPage) : transition.fromPageName || "起点"} → {transition.toPageName}
+                {transition.clickedElement?.text ? `（点击：${transition.clickedElement.text}）` : ""}
                 {transition.exactDuplicateSkipped ? "（重复未新增）" : ""}
               </p>
             );
@@ -376,6 +377,9 @@ function PageDetail({ page, onSave }: { page: PageRecord; onSave: (note: ManualN
       </div>
       {page.duplicateInfo?.status === "suspected_duplicate" ? (
         <p className="duplicate">疑似重复于：{page.duplicateInfo.canonicalPageName ?? page.duplicateInfo.canonicalPageId}</p>
+      ) : null}
+      {page.click ? (
+        <p className="path">触发点击：{page.click.text}（{page.click.tagName}）</p>
       ) : null}
       <p className="url">{page.url}</p>
       <p className="path">{page.path.length ? page.path.join(" / ") : "菜单路径待人工补充"}</p>

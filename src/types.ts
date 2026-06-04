@@ -59,6 +59,21 @@ export interface PageRelationSeed {
   evidence: string;
 }
 
+export interface ClickEvidence {
+  text: string;
+  tagName: string;
+  role?: string;
+  selector: string;
+  href?: string;
+  ariaLabel?: string;
+  title?: string;
+  inputType?: string;
+  coordinates?: {
+    x: number;
+    y: number;
+  };
+}
+
 export interface PageDuplicateInfo {
   status: "unique" | "suspected_duplicate";
   exactFingerprint: string;
@@ -81,7 +96,8 @@ export interface PageTransition {
   toPageName: string;
   toUrl: string;
   timestamp: string;
-  trigger: "manual_capture";
+  trigger: "manual_capture" | "page_click";
+  clickedElement?: ClickEvidence;
   exactDuplicateSkipped?: boolean;
 }
 
@@ -100,6 +116,7 @@ export interface PageRecord {
   relationSeeds: PageRelationSeed[];
   duplicateInfo: PageDuplicateInfo;
   network: NetworkEntry[];
+  click?: ClickEvidence;
   manualNote?: ManualNote;
   evidenceVersion: "raw-v1";
   derivedVersion: "derived-v1";

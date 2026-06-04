@@ -1,4 +1,4 @@
-import type { ExtensionMessage, PageElements, PageNaming, PageRelationSeed } from "./types";
+import type { ClickEvidence, ExtensionMessage, PageElements, PageNaming, PageRelationSeed } from "./types";
 
 declare global {
   interface Window {
@@ -7,6 +7,8 @@ declare global {
 }
 
 let networkHookInjected = false;
+let clickCaptureTimer: number | undefined;
+let lastClickAt = 0;
 
 function createId(prefix: string): string {
   const bytes = new Uint8Array(8);
@@ -55,6 +57,66 @@ function cleanName(value: string): string {
     .replace(/[|｜].*$/g, "")
     .trim()
     .slice(0, 80);
+}
+
+function cssPath(element: Element): string {
+  const parts: string[] = [];
+  let current: Element | null = element;
+
+  while (current && current !== document.documentElement && parts.length < 6) {
+    const tag = current.tagName.toLowerCase();
+    const id = current.id && /^[a-zA-Z][\w-]*$/.test(current.id) ? `#${current.id}` : "";
+    const role = current.getAttribute("role");
+    const label = current.getAttribute("aria-label") || current.getAttribute("title");
+    const className = Array.from(current.classList)
+      .filter((name) => !/active|selected|hover|focus|open|show|disabled/i.test(name))
+      .slice(0, 2)
+      .map((name) => `.${CSS.escape(name)}`)
+      .join("");
+    const nth = current.parentElement
+      ? `:nth-child(${Array.from(current.parentElement.children).indexOf(current) + 1})`
+      : "";
+    const hint = label ? `[label="${label.replace(/\s+/g, " ").trim().slice(0, 40)}"]` : role ? `[role="${role}"]` : "";
+    parts.unshift(`${tag}${id || className || hint ? `${id}${className}${hint}` : nth}`);
+    current = current.parentElement;
+  }
+
+  return parts.join(" > ");
+}
+
+function nearestClickable(element: Element): Element {
+  return element.closest("button, a, [role='button'], [role='menuitem'], [role='tab'], input, select, textarea, [onclick], tr, td, [class*='menu' i], [class*='tab' i]") ?? element;
+}
+
+function extractClickEvidence(element: Element, event: MouseEvent): ClickEvidence {
+  const target = nearestClickable(element);
+  const input = target instanceof HTMLInputElement ? target : undefined;
+  const inputLabel = input && ["button", "submit", "reset"].includes(input.type) ? input.value : "";
+  const anchor = target.closest("a");
+  const text = cleanName(
+    visibleText(target) ||
+      inputLabel ||
+      target.getAttribute("aria-label") ||
+      target.getAttribute("title") ||
+      target.getAttribute("name") ||
+      target.id ||
+      target.tagName.toLowerCase()
+  );
+
+  return {
+    text: text || target.tagName.toLowerCase(),
+    tagName: target.tagName.toLowerCase(),
+    role: target.getAttribute("role") || undefined,
+    selector: cssPath(target),
+    href: anchor?.href ? sanitizeUrl(anchor.href) : undefined,
+    ariaLabel: target.getAttribute("aria-label") || undefined,
+    title: target.getAttribute("title") || undefined,
+    inputType: input?.type,
+    coordinates: {
+      x: Math.round(event.clientX),
+      y: Math.round(event.clientY)
+    }
+  };
 }
 
 function urlSegments(): string[] {
@@ -186,7 +248,7 @@ function extractRelationSeeds(path: string[], elements: PageElements, naming: Pa
   return seeds;
 }
 
-function sendCapture() {
+function sendCapture(click?: ClickEvidence) {
   const message: ExtensionMessage = {
     type: "PAGE_CAPTURE",
     payload: {
@@ -203,6 +265,7 @@ function sendCapture() {
       elements: extractElements(),
       naming: { displayName: "", candidates: [], keyTexts: [], objectHints: [] },
       relationSeeds: [],
+      click,
       manualNote: { purpose: "", userRole: "", importance: "", manualPath: "" }
     }
   };
@@ -214,6 +277,23 @@ function sendCapture() {
   message.payload.relationSeeds = extractRelationSeeds(path, elements, naming);
 
   chrome.runtime.sendMessage(message).catch(() => undefined);
+}
+
+function scheduleClickCapture(event: MouseEvent) {
+  const taskStateMessage: ExtensionMessage = { type: "GET_TASK_STATE" };
+  void chrome.runtime.sendMessage(taskStateMessage).then((task) => {
+    if (!task || task.status !== "running") return;
+    const target = event.target instanceof Element ? event.target : undefined;
+    if (!target) return;
+
+    const now = Date.now();
+    if (now - lastClickAt < 250) return;
+    lastClickAt = now;
+
+    const click = extractClickEvidence(target, event);
+    window.clearTimeout(clickCaptureTimer);
+    clickCaptureTimer = window.setTimeout(() => sendCapture(click), 1200);
+  }).catch(() => undefined);
 }
 
 function start() {
@@ -233,6 +313,8 @@ function start() {
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === "FORCE_CAPTURE") sendCapture();
   });
+
+  document.addEventListener("click", scheduleClickCapture, true);
 
   injectNetworkHook();
 }
