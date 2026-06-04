@@ -83,3 +83,5 @@ task.zip
 ## 外部 AI 分析
 
 见 [docs/ai-analysis.md](docs/ai-analysis.md)。AI 分析必须基于 ZIP 中的原始证据文件执行，分析结果不覆盖原始证据。
+
+系统真实结构还原可使用 [系统事实库还原提示词 V1](docs/system-fact-restore-prompt-v1.md)，要求事实、待确认信息和 AI 推测分开输出。
