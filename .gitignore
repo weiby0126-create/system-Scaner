@@ -1,0 +1,8 @@
+node_modules
+dist
+release
+extracted
+.DS_Store
+npm-debug.log*
+md-reader.html
+打开Markdown阅读器.command
