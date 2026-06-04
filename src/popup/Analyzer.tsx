@@ -34,7 +34,11 @@ type NavigationNode = {
 type NavigationEdge = {
   from: string;
   to: string;
-  type: "contains" | "opens";
+  type: "contains" | "opens" | "structure_link";
+  entryName?: string;
+  relationType?: string;
+  confidence?: string;
+  supportCount?: number;
 };
 
 type RelationshipSeed = {
@@ -62,6 +66,21 @@ type ClickPath = {
     selector?: string;
   };
   exactDuplicateSkipped?: boolean;
+};
+
+type StructureRelation = {
+  id: string;
+  fromPageName?: string;
+  toPageName: string;
+  entryName: string;
+  entryType?: string;
+  relationType: "navigation" | "detail_entry" | "same_page_action" | "manual_checkpoint";
+  confidence: "low" | "medium" | "high";
+  supportCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  evidenceTransitionIds?: string[];
+  notes?: string[];
 };
 
 type RestoredFunction = {
@@ -94,6 +113,7 @@ type RestoredModel = {
   navigationNodes: NavigationNode[];
   navigationEdges: NavigationEdge[];
   relationshipSeeds: RelationshipSeed[];
+  structureRelations: StructureRelation[];
   clickPaths: ClickPath[];
   functions: RestoredFunction[];
   capabilities: RestoredCapability[];
@@ -374,19 +394,21 @@ async function restoreFromZip(file: File): Promise<RestoredModel> {
   const navigationRaw = await readJson(zip, "navigation-map.json");
   const seedsRaw = await readJson(zip, "relationship-seeds.json");
   const clickPathsRaw = await readJson(zip, "click-paths.json");
+  const structureRelationsRaw = await readJson(zip, "structure-relations.json");
   const fallbackPages = await readPageJsons(zip);
 
   const pages = asArray<PageIndexItem>(pageIndexRaw).length > 0 ? asArray<PageIndexItem>(pageIndexRaw) : fallbackPages;
   const navigationNodes = asArray<NavigationNode>((navigationRaw as { nodes?: NavigationNode[] } | undefined)?.nodes);
   const navigationEdges = asArray<NavigationEdge>((navigationRaw as { edges?: NavigationEdge[] } | undefined)?.edges);
   const relationshipSeeds = asArray<RelationshipSeed>(seedsRaw);
+  const structureRelations = asArray<StructureRelation>(structureRelationsRaw);
   const clickPaths = asArray<ClickPath>(clickPathsRaw);
   const functions = buildFunctions(pages, relationshipSeeds);
   const capabilities = buildCapabilities(pages, functions);
   const similarities = buildSimilarities(pages);
   const suggestedStructure = buildSuggestedStructure(pages, similarities);
 
-  return { metadata, pages, navigationNodes, navigationEdges, relationshipSeeds, clickPaths, functions, capabilities, similarities, suggestedStructure };
+  return { metadata, pages, navigationNodes, navigationEdges, relationshipSeeds, structureRelations, clickPaths, functions, capabilities, similarities, suggestedStructure };
 }
 
 function downloadJson(model: RestoredModel) {
@@ -456,8 +478,8 @@ export function Analyzer() {
               <span>能力草稿</span>
             </div>
             <div>
-              <strong>{model.clickPaths.length}</strong>
-              <span>点击路径</span>
+              <strong>{model.structureRelations.length || model.clickPaths.length}</strong>
+              <span>结构关系</span>
             </div>
           </section>
 
@@ -554,21 +576,30 @@ export function Analyzer() {
             </div>
           </section>
 
-          {model.clickPaths.length > 0 ? (
+          {(model.structureRelations.length > 0 || model.clickPaths.length > 0) ? (
             <section className="panel">
               <div className="sectionTitle">
-                <h2>点击路径</h2>
+                <h2>结构入口关系</h2>
                 <GitBranch size={16} />
               </div>
               <div className="pageList">
-                {model.clickPaths.slice(-20).map((path) => (
-                  <div className="pageRow" key={path.id}>
-                    <strong>{path.fromPageName || "起点"} → {path.toPageName}</strong>
-                    <span>
-                      {path.clickedElement?.text ? `点击：${path.clickedElement.text}` : path.trigger === "manual_capture" ? "手动补采" : "页面点击"}
-                    </span>
-                    <span>{path.timestamp}</span>
-                    {path.exactDuplicateSkipped ? <em>重复页面未新增证据</em> : null}
+                {(model.structureRelations.length > 0 ? model.structureRelations : model.clickPaths.map((path) => ({
+                  id: path.id,
+                  fromPageName: path.fromPageName,
+                  toPageName: path.toPageName,
+                  entryName: path.clickedElement?.text || (path.trigger === "manual_capture" ? "手动补采" : "页面点击"),
+                  relationType: "navigation" as const,
+                  confidence: "low" as const,
+                  supportCount: 1,
+                  firstSeenAt: path.timestamp,
+                  lastSeenAt: path.timestamp,
+                  notes: path.exactDuplicateSkipped ? ["重复页面未新增证据"] : []
+                }))).slice(0, 20).map((relation) => (
+                  <div className="pageRow" key={relation.id}>
+                    <strong>{relation.fromPageName || "起点"} → {relation.toPageName}</strong>
+                    <span>入口：{relation.entryName}，{relation.supportCount} 次，置信度 {relation.confidence}</span>
+                    <span>{relation.relationType === "same_page_action" ? "页内功能线索" : relation.relationType === "manual_checkpoint" ? "补采证据" : relation.relationType === "detail_entry" ? "详情入口" : "导航入口"}</span>
+                    {relation.notes?.length ? <em>{relation.notes[0]}</em> : null}
                   </div>
                 ))}
               </div>

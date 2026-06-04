@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../lib/db";
 import { buildTaskZip } from "../lib/exportZip";
 import { createId } from "../lib/ids";
-import type { ManualNote, PageRecord, PageTransition, ScanTask, TaskInput } from "../types";
+import type { ManualNote, PageRecord, PageTransition, ScanTask, StructureRelation, TaskInput } from "../types";
 import { Analyzer } from "./Analyzer";
 
 const emptyTask: TaskInput = {
@@ -51,6 +51,65 @@ function inferLiveAction(page: PageRecord): string {
   if ((page.elements?.inputs?.length ?? 0) > 0) return "表单操作";
   if ((page.elements?.tables?.length ?? 0) > 0) return "列表查看";
   return "页面查看";
+}
+
+function normalizeRelationText(value = ""): string {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function liveRelationType(transition: PageTransition): StructureRelation["relationType"] {
+  if (!transition.clickedElement) return "manual_checkpoint";
+  if (transition.fromPageId === transition.toPageId) return "same_page_action";
+  if (/detail|详情|handle|view/i.test(`${transition.toPageName} ${transition.toUrl}`)) return "detail_entry";
+  return "navigation";
+}
+
+function liveEntryType(transition: PageTransition): StructureRelation["entryType"] {
+  const click = transition.clickedElement;
+  if (!click) return "manual";
+  if (click.role === "tab" || /tab/i.test(click.selector)) return "tab";
+  if (click.tagName === "a" || click.href) return "link";
+  if (click.tagName === "tr" || click.tagName === "td") return "row";
+  if (click.role === "menuitem" || /menu/i.test(click.selector)) return "menu";
+  if (click.tagName === "button" || click.role === "button" || click.inputType === "button" || click.inputType === "submit") return "button";
+  return "unknown";
+}
+
+function buildLiveStructureRelations(transitions: PageTransition[]): StructureRelation[] {
+  const grouped = new Map<string, StructureRelation>();
+  transitions.forEach((transition) => {
+    const entryName = transition.clickedElement?.text || (transition.trigger === "manual_capture" ? "手动补采" : "未知入口");
+    const relationType = liveRelationType(transition);
+    const key = [transition.fromPageId || "start", transition.toPageId, normalizeRelationText(entryName), relationType].join("::");
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.supportCount += 1;
+      existing.lastSeenAt = transition.timestamp;
+      existing.evidenceTransitionIds.push(transition.id);
+      existing.confidence = existing.supportCount > 1 && relationType !== "same_page_action" ? "high" : existing.confidence;
+      return;
+    }
+
+    grouped.set(key, {
+      id: `live-relation-${grouped.size + 1}`,
+      taskId: transition.taskId,
+      fromPageId: transition.fromPageId,
+      fromPageName: transition.fromPageName,
+      toPageId: transition.toPageId,
+      toPageName: transition.toPageName,
+      entryName,
+      entryType: liveEntryType(transition),
+      relationType,
+      confidence: relationType === "same_page_action" || relationType === "manual_checkpoint" ? "low" : "medium",
+      supportCount: 1,
+      firstSeenAt: transition.timestamp,
+      lastSeenAt: transition.timestamp,
+      evidenceTransitionIds: [transition.id],
+      notes: []
+    });
+  });
+
+  return Array.from(grouped.values()).sort((left, right) => right.supportCount - left.supportCount || left.firstSeenAt.localeCompare(right.firstSeenAt));
 }
 
 async function requestActivePageCapture() {
@@ -308,6 +367,7 @@ function ScannedStructure({ pages, transitions }: { pages: PageRecord[]; transit
   if (pages.length === 0) return <p className="empty">开始采集后，在业务页面点击菜单、按钮或链接，这里会生成系统结构。</p>;
 
   const pageById = new Map(pages.map((page) => [page.pageId, page]));
+  const structureRelations = buildLiveStructureRelations(transitions);
   const roots = new Map<string, { name: string; children: Map<string, PageRecord[]> }>();
 
   pages.forEach((page) => {
@@ -343,14 +403,15 @@ function ScannedStructure({ pages, transitions }: { pages: PageRecord[]; transit
       ))}
       {transitions.length > 0 ? (
         <div className="clickPaths">
-          <strong>点击路径</strong>
-          {transitions.slice(-8).map((transition) => {
-            const fromPage = transition.fromPageId ? pageById.get(transition.fromPageId) : undefined;
+          <strong>结构入口</strong>
+          {structureRelations.slice(0, 8).map((relation) => {
+            const fromPage = relation.fromPageId ? pageById.get(relation.fromPageId) : undefined;
             return (
-              <p key={transition.id}>
-                {fromPage ? pageDisplayName(fromPage) : transition.fromPageName || "起点"} → {transition.toPageName}
-                {transition.clickedElement?.text ? `（点击：${transition.clickedElement.text}）` : ""}
-                {transition.exactDuplicateSkipped ? "（重复未新增）" : ""}
+              <p key={relation.id}>
+                {fromPage ? pageDisplayName(fromPage) : relation.fromPageName || "起点"} → {relation.toPageName}
+                {relation.entryName ? `（入口：${relation.entryName}）` : ""}
+                {relation.supportCount > 1 ? ` ×${relation.supportCount}` : ""}
+                {relation.relationType === "same_page_action" ? "（页内功能线索）" : ""}
               </p>
             );
           })}

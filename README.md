@@ -22,6 +22,7 @@
 - 页面元素分析：提取按钮、输入框、下拉框、表格、标签等派生数据。
 - 网络采集：监听 fetch 和 XHR，只保存 URL、method、status、类型和时间。
 - ZIP 导出：包含 metadata、summary、pages/page-xxx 下的 HTML、截图、页面元数据和 Network。
+- 结构关系还原：保留原始 `click-paths.json`，同时生成去重聚合后的 `structure-relations.json`，用于还原系统结构，避免人为点击顺序直接影响目录。
 
 ## 本地开发
 
@@ -64,6 +65,7 @@ task.zip
 ├ page-index.json
 ├ navigation-map.json
 ├ relationship-seeds.json
+├ structure-relations.json
 ├ click-paths.json
 └ pages
   ├ page-001

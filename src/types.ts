@@ -101,6 +101,24 @@ export interface PageTransition {
   exactDuplicateSkipped?: boolean;
 }
 
+export interface StructureRelation {
+  id: string;
+  taskId: string;
+  fromPageId?: string;
+  fromPageName?: string;
+  toPageId: string;
+  toPageName: string;
+  entryName: string;
+  entryType: "menu" | "button" | "link" | "tab" | "row" | "manual" | "unknown";
+  relationType: "navigation" | "detail_entry" | "same_page_action" | "manual_checkpoint";
+  confidence: "low" | "medium" | "high";
+  supportCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  evidenceTransitionIds: string[];
+  notes: string[];
+}
+
 export interface PageRecord {
   pageId: string;
   taskId: string;
